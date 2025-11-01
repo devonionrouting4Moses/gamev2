@@ -340,8 +340,9 @@ namespace TerminalRacer
         
         public async Task<bool> ConnectToServer(string host, int port = 9999)
         {
-            const int maxAttempts = 3;
-            const int delayMs = 2000;
+            const int maxAttempts = 5;
+            const int delayMs = 3000;
+            const int timeoutSeconds = 15;
             
             Console.WriteLine($"\n╔════════════════════════════════════════╗");
             Console.WriteLine($"║   🌐 CONNECTING TO HOST                ║");
@@ -350,6 +351,21 @@ namespace TerminalRacer
             Console.WriteLine($"║ Port: {port,-32} ║");
             Console.WriteLine($"╚════════════════════════════════════════╝\n");
             
+            // Try to resolve hostname first
+            try
+            {
+                Console.WriteLine($"Resolving hostname: {host}...");
+                var addresses = await System.Net.Dns.GetHostAddressesAsync(host);
+                if (addresses.Length > 0)
+                {
+                    Console.WriteLine($"✓ Resolved to: {addresses[0]}\n");
+                }
+            }
+            catch (Exception dnsEx)
+            {
+                Console.WriteLine($"⚠️  DNS resolution failed: {dnsEx.Message}\n");
+            }
+            
             for (int attempt = 1; attempt <= maxAttempts; attempt++)
             {
                 try
@@ -357,15 +373,18 @@ namespace TerminalRacer
                     Console.Write($"Attempt {attempt}/{maxAttempts}: Connecting...");
                     
                     client = new TcpClient();
+                    client.ReceiveTimeout = timeoutSeconds * 1000;
+                    client.SendTimeout = timeoutSeconds * 1000;
+                    
                     var connectTask = client.ConnectAsync(host, port);
-                    var timeoutTask = Task.Delay(TimeSpan.FromSeconds(10));
+                    var timeoutTask = Task.Delay(TimeSpan.FromSeconds(timeoutSeconds));
                     
                     var completedTask = await Task.WhenAny(connectTask, timeoutTask);
                     
                     if (completedTask == timeoutTask)
                     {
-                        Console.WriteLine(" ⏱️  Timeout");
-                        client.Close();
+                        Console.WriteLine($" ⏱️  Timeout ({timeoutSeconds}s)");
+                        try { client.Close(); } catch { }
                         
                         if (attempt < maxAttempts)
                         {
@@ -375,7 +394,12 @@ namespace TerminalRacer
                         continue;
                     }
                     
-                    await connectTask;
+                    // Check if connection actually succeeded
+                    if (!connectTask.IsCompletedSuccessfully)
+                    {
+                        await connectTask; // This will throw the actual exception
+                    }
+                    
                     stream = client.GetStream();
                     IsServer = false;
                     
@@ -387,10 +411,13 @@ namespace TerminalRacer
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($" ❌ Failed");
+                    Console.WriteLine($" ❌ Failed: {ex.GetType().Name}");
+                    
+                    try { client?.Close(); } catch { }
                     
                     if (attempt < maxAttempts)
                     {
+                        Console.WriteLine($"Error: {ex.Message}");
                         Console.WriteLine($"Retrying in {delayMs / 1000} seconds...\n");
                         await Task.Delay(delayMs);
                     }
