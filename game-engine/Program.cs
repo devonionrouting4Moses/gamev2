@@ -1254,9 +1254,27 @@ namespace TerminalRacer
             for (int i = 0; i < Math.Min(5, scores.Count); i++)
             {
                 var s = scores[i];
-                int score = Convert.ToInt32(s["score"]);
-                int level = Convert.ToInt32(s["level"]);
-                string player = s["player"]?.ToString() ?? "Unknown";
+                
+                // Handle JsonElement values from JSON deserialization
+                int score = 0;
+                int level = 0;
+                string player = "Unknown";
+                
+                if (s["score"] is JsonElement scoreElem)
+                    score = scoreElem.GetInt32();
+                else
+                    score = Convert.ToInt32(s["score"]);
+                
+                if (s["level"] is JsonElement levelElem)
+                    level = levelElem.GetInt32();
+                else
+                    level = Convert.ToInt32(s["level"]);
+                
+                if (s["player"] is JsonElement playerElem)
+                    player = playerElem.GetString() ?? "Unknown";
+                else
+                    player = s["player"]?.ToString() ?? "Unknown";
+                
                 Console.WriteLine($"║ {i+1}. {player,-10} {score,8:N0}  Lv.{level,-2} ║");
             }
             
