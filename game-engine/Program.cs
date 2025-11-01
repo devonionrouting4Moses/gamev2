@@ -297,31 +297,128 @@ namespace TerminalRacer
                 server.Start();
                 IsServer = true;
                 
-                // Wait for client connection
-                client = await server.AcceptTcpClientAsync();
+                // Get local IP
+                var hostName = System.Net.Dns.GetHostName();
+                var hostEntry = System.Net.Dns.GetHostEntry(hostName);
+                var localIP = hostEntry.AddressList.FirstOrDefault(ip => ip.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)?.ToString() ?? "localhost";
+                
+                Console.WriteLine($"\n╔════════════════════════════════════════╗");
+                Console.WriteLine($"║   🌐 SERVER STARTED                    ║");
+                Console.WriteLine($"╠════════════════════════════════════════╣");
+                Console.WriteLine($"║ Port: {port,-32} ║");
+                Console.WriteLine($"║ Local IP: {localIP,-28} ║");
+                Console.WriteLine($"║ Status: Waiting for connection...      ║");
+                Console.WriteLine($"╚════════════════════════════════════════╝\n");
+                
+                // Wait for client connection with timeout
+                var acceptTask = server.AcceptTcpClientAsync();
+                var timeoutTask = Task.Delay(TimeSpan.FromSeconds(120));
+                
+                var completedTask = await Task.WhenAny(acceptTask, timeoutTask);
+                
+                if (completedTask == timeoutTask)
+                {
+                    Console.WriteLine("❌ Connection timeout (2 minutes). No player connected.");
+                    return false;
+                }
+                
+                client = await acceptTask;
                 stream = client.GetStream();
+                
+                var remoteIP = ((System.Net.IPEndPoint)client.Client.RemoteEndPoint)?.Address.ToString() ?? "Unknown";
+                Console.WriteLine($"\n✓ Player 2 connected from {remoteIP}");
+                Console.WriteLine($"🎮 Starting multiplayer game...\n");
+                
                 return true;
             }
-            catch
+            catch (Exception ex)
             {
+                Console.WriteLine($"❌ Server error: {ex.Message}");
                 return false;
             }
         }
         
         public async Task<bool> ConnectToServer(string host, int port = 9999)
         {
-            try
+            const int maxAttempts = 3;
+            const int delayMs = 2000;
+            
+            Console.WriteLine($"\n╔════════════════════════════════════════╗");
+            Console.WriteLine($"║   🌐 CONNECTING TO HOST                ║");
+            Console.WriteLine($"╠════════════════════════════════════════╣");
+            Console.WriteLine($"║ Host: {host,-32} ║");
+            Console.WriteLine($"║ Port: {port,-32} ║");
+            Console.WriteLine($"╚════════════════════════════════════════╝\n");
+            
+            for (int attempt = 1; attempt <= maxAttempts; attempt++)
             {
-                client = new TcpClient();
-                await client.ConnectAsync(host, port);
-                stream = client.GetStream();
-                IsServer = false;
-                return true;
+                try
+                {
+                    Console.Write($"Attempt {attempt}/{maxAttempts}: Connecting...");
+                    
+                    client = new TcpClient();
+                    var connectTask = client.ConnectAsync(host, port);
+                    var timeoutTask = Task.Delay(TimeSpan.FromSeconds(10));
+                    
+                    var completedTask = await Task.WhenAny(connectTask, timeoutTask);
+                    
+                    if (completedTask == timeoutTask)
+                    {
+                        Console.WriteLine(" ⏱️  Timeout");
+                        client.Close();
+                        
+                        if (attempt < maxAttempts)
+                        {
+                            Console.WriteLine($"Retrying in {delayMs / 1000} seconds...\n");
+                            await Task.Delay(delayMs);
+                        }
+                        continue;
+                    }
+                    
+                    await connectTask;
+                    stream = client.GetStream();
+                    IsServer = false;
+                    
+                    Console.WriteLine(" ✓ Connected!\n");
+                    Console.WriteLine($"✓ Successfully connected to {host}:{port}");
+                    Console.WriteLine($"🎮 Starting multiplayer game...\n");
+                    
+                    return true;
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($" ❌ Failed");
+                    
+                    if (attempt < maxAttempts)
+                    {
+                        Console.WriteLine($"Retrying in {delayMs / 1000} seconds...\n");
+                        await Task.Delay(delayMs);
+                    }
+                }
             }
-            catch
-            {
-                return false;
-            }
+            
+            // All attempts failed
+            Console.WriteLine($"\n╔════════════════════════════════════════╗");
+            Console.WriteLine($"║   ❌ CONNECTION FAILED                 ║");
+            Console.WriteLine($"╠════════════════════════════════════════╣");
+            Console.WriteLine($"║ Could not connect after {maxAttempts} attempts      ║");
+            Console.WriteLine($"╠════════════════════════════════════════╣");
+            Console.WriteLine($"║ Possible causes:                       ║");
+            Console.WriteLine($"║ 1. Host is not running the game        ║");
+            Console.WriteLine($"║ 2. Wrong IP address entered            ║");
+            Console.WriteLine($"║ 3. Firewall blocking port 9999         ║");
+            Console.WriteLine($"║ 4. Network connectivity issue          ║");
+            Console.WriteLine($"║ 5. Host machine is offline             ║");
+            Console.WriteLine($"╠════════════════════════════════════════╣");
+            Console.WriteLine($"║ Solutions:                             ║");
+            Console.WriteLine($"║ • Verify host IP: {host,-24} ║");
+            Console.WriteLine($"║ • Check host is in Network Multiplayer ║");
+            Console.WriteLine($"║ • Disable firewall temporarily         ║");
+            Console.WriteLine($"║ • Check network connection             ║");
+            Console.WriteLine($"║ • Try again in a few moments           ║");
+            Console.WriteLine($"╚════════════════════════════════════════╝\n");
+            
+            return false;
         }
         
         public async Task SendGameState(Car car, int score)
@@ -1332,14 +1429,8 @@ namespace TerminalRacer
                 
                 if (netChoice == "h")
                 {
-                    Console.WriteLine("Starting server on port 9999...");
-                    if (await mp.StartServer())
+                    if (!await mp.StartServer())
                     {
-                        Console.WriteLine("✓ Waiting for player 2...");
-                    }
-                    else
-                    {
-                        Console.WriteLine("❌ Failed to start server");
                         return;
                     }
                 }
@@ -1347,15 +1438,9 @@ namespace TerminalRacer
                 {
                     Console.Write("Enter host IP: ");
                     var host = Console.ReadLine() ?? "localhost";
-                    Console.WriteLine($"Connecting to {host}...");
                     
-                    if (await mp.ConnectToServer(host))
+                    if (!await mp.ConnectToServer(host))
                     {
-                        Console.WriteLine("✓ Connected!");
-                    }
-                    else
-                    {
-                        Console.WriteLine("❌ Connection failed");
                         return;
                     }
                 }
