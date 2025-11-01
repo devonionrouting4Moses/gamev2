@@ -1,0 +1,36 @@
+# Build outputs
+bin/
+obj/
+target/
+*.dll
+*.pdb
+*.so
+*.o
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Rust
+Cargo.lock
+target/
+
+# .NET
+.vs/
+.vscode/
+*.user
+*.suo
+
+# Game data (optional - comment out to track)
+replays/
+highscores.json
+
+# Temporary
+*.tmp
+*.log
