@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <Description>Game logic, services, and managers for Terminal Racer</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Core\TerminalRacer.Core.csproj" />
+    <ProjectReference Include="..\Rendering\TerminalRacer.Rendering.csproj" />
+    <ProjectReference Include="..\Audio\TerminalRacer.Audio.csproj" />
+    <ProjectReference Include="..\Networking\TerminalRacer.Networking.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.Text.Json" Version="8.0.0" />
+  </ItemGroup>
+
+</Project>

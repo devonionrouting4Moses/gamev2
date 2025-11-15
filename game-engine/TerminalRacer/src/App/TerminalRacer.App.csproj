@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>TerminalRacer</AssemblyName>
+    <RootNamespace>TerminalRacer.App</RootNamespace>
+    <Description>Terminal Racer - Ultimate Edition Game Application</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Core\TerminalRacer.Core.csproj" />
+    <ProjectReference Include="..\Rendering\TerminalRacer.Rendering.csproj" />
+    <ProjectReference Include="..\Audio\TerminalRacer.Audio.csproj" />
+    <ProjectReference Include="..\Networking\TerminalRacer.Networking.csproj" />
+    <ProjectReference Include="..\GameLogic\TerminalRacer.GameLogic.csproj" />
+  </ItemGroup>
+
+  <!-- Copy sound files to output -->
+  <ItemGroup>
+    <None Include="..\..\sounds\**\*" Condition="Exists('..\..\sounds')">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>sounds\%(RecursiveDir)%(FileName)%(Extension)</Link>
+    </None>
+  </ItemGroup>
+
+</Project>
