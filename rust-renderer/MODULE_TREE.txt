@@ -1,0 +1,280 @@
+╔════════════════════════════════════════════════════════════════════════════════╗
+║           TERMINAL RACER - RUST RENDERER MODULE ARCHITECTURE                   ║
+╚════════════════════════════════════════════════════════════════════════════════╝
+
+lib.rs (C FFI Entry Point)
+│
+├─ ratatui_init()              → io::terminal::init()
+├─ ratatui_cleanup()           → io::terminal::cleanup()
+├─ ratatui_poll_input()        → io::input::poll_input()
+├─ ratatui_render()            → [Game Mode Routers]
+│   ├─ render_singleplayer()
+│   ├─ render_splitscreen()
+│   ├─ render_career_mode()
+│   └─ render_replay_mode()
+└─ ratatui_render_menu()       → rendering::hud::render_menu()
+
+═══════════════════════════════════════════════════════════════════════════════════
+
+┌─ CORE DOMAIN ──────────────────────────────────────────────────────────────────┐
+│ src/core/                                                                       │
+│                                                                                 │
+│ ├─ mod.rs                                                                       │
+│ │  └─ Exports: types, utils                                                    │
+│ │                                                                               │
+│ ├─ types.rs                                                                     │
+│ │  ├─ Structures:                                                              │
+│ │  │  ├─ GameState (Player, AI, Obstacles, Environment, Meta)                │
+│ │  │  ├─ InputState (P1/P2 Controls, System)                                 │
+│ │  │  └─ AudioCommand (Sound Effects)                                        │
+│ │  │                                                                           │
+│ │  └─ Constants:                                                              │
+│ │     ├─ game_modes (SINGLE_PLAYER, SPLIT_SCREEN, CAREER, REPLAY)           │
+│ │     ├─ track_types (HIGHWAY, CITY, MOUNTAIN, DESERT, TUNNEL)              │
+│ │     ├─ weather (CLEAR, RAIN, FOG, NIGHT)                                  │
+│ │     ├─ obstacle_types (CONE, OIL, BOOST, STAR, MAGNET, CLOCK)            │
+│ │     ├─ building_types (GLASS, CONCRETE, BRICK)                            │
+│ │     └─ audio_types (ENGINE, BOOST, CRASH, POWERUP, MUSIC)                │
+│ │                                                                              │
+│ └─ utils.rs                                                                     │
+│    ├─ Color Functions:                                                         │
+│    │  ├─ get_combo_color(combo: i32) → Color                                │
+│    │  └─ get_health_color(health: i32) → Color                              │
+│    │                                                                           │
+│    ├─ Lookup Functions:                                                        │
+│    │  ├─ get_track_name(track_type: i32) → &str                             │
+│    │  ├─ get_weather_icon(weather: i32) → &str                              │
+│    │  └─ get_track_style(track, weather, darkness) → Style                  │
+│    │                                                                           │
+│    ├─ Design Functions:                                                        │
+│    │  ├─ get_car_design(car_type, is_boss) → CarDesign                      │
+│    │  │  └─ 10 Car Types: Sports, Police, Racer, Truck, Taxi, Van,         │
+│    │  │                   Muscle, Convertible, Limo, Default                │
+│    │  ├─ get_powerup_icon(ptype) → (icon, color)                            │
+│    │  │  └─ 6 Types: Cone, Oil, Boost, Star, Magnet, Clock                │
+│    │  ├─ get_building_style(btype) → (chars, color)                         │
+│    │  │  └─ 3 Types: Glass, Concrete, Brick                                │
+│    │  └─ get_road_char(weather) → &str                                      │
+│    │     └─ Weather-based road textures                                      │
+│    │                                                                           │
+│    └─ CarDesign Structure:                                                     │
+│       ├─ art: [&str; 4]  (ASCII art lines)                                   │
+│       ├─ color: Color    (Ratatui color)                                     │
+│       └─ label: &str     (Car identifier)                                    │
+│                                                                                 │
+└─────────────────────────────────────────────────────────────────────────────────┘
+
+┌─ I/O DOMAIN ───────────────────────────────────────────────────────────────────┐
+│ src/io/                                                                         │
+│                                                                                 │
+│ ├─ mod.rs                                                                       │
+│ │  └─ Exports: input, terminal                                                │
+│ │                                                                               │
+│ ├─ terminal.rs                                                                  │
+│ │  ├─ Global State:                                                            │
+│ │  │  └─ TERMINAL: Option<Terminal<CrosstermBackend<io::Stdout>>>           │
+│ │  │                                                                           │
+│ │  └─ Functions:                                                              │
+│ │     ├─ init() → bool                                                        │
+│ │     │  ├─ enable_raw_mode()                                                │
+│ │     │  ├─ EnterAlternateScreen                                             │
+│ │     │  └─ Create Terminal                                                  │
+│ │     │                                                                        │
+│ │     ├─ cleanup()                                                            │
+│ │     │  ├─ disable_raw_mode()                                               │
+│ │     │  └─ LeaveAlternateScreen                                             │
+│ │     │                                                                        │
+│ │     └─ get_terminal() → Option<&'static mut Terminal>                     │
+│ │        └─ Safe mutable access wrapper                                      │
+│ │                                                                              │
+│ └─ input.rs                                                                     │
+│    ├─ poll_input(input: *mut InputState) → bool                              │
+│    │  ├─ Reset InputState                                                     │
+│    │  ├─ event::poll(16ms timeout)                                           │
+│    │  └─ handle_key_event()                                                  │
+│    │                                                                           │
+│    └─ handle_key_event(code: KeyCode, input_state: &mut InputState)         │
+│       ├─ Player 1 Controls:                                                   │
+│       │  ├─ Left/A: p1_left                                                  │
+│       │  ├─ Right/D: p1_right                                                │
+│       │  ├─ Up/W: p1_accel                                                   │
+│       │  ├─ Down/S: p1_brake                                                 │
+│       │  └─ Space: p1_boost                                                  │
+│       │                                                                        │
+│       ├─ Player 2 Controls:                                                   │
+│       │  ├─ J: p2_left                                                       │
+│       │  ├─ L: p2_right                                                      │
+│       │  ├─ I: p2_accel                                                      │
+│       │  ├─ K: p2_brake                                                      │
+│       │  └─ U: p2_boost                                                      │
+│       │                                                                        │
+│       └─ System Controls:                                                      │
+│          ├─ Q/Esc: quit                                                       │
+│          ├─ P: pause                                                          │
+│          └─ M: menu                                                           │
+│                                                                                 │
+└─────────────────────────────────────────────────────────────────────────────────┘
+
+┌─ RENDERING DOMAIN ─────────────────────────────────────────────────────────────┐
+│ src/rendering/                                                                  │
+│                                                                                 │
+│ ├─ mod.rs                                                                       │
+│ │  └─ Exports: track, objects, effects, hud                                   │
+│ │                                                                               │
+│ ├─ track.rs ─────────────────────────────────────────────────────────────────┐ │
+│ │ Main: render_track(f, area, state, player_pos, player_dist, is_primary)   │ │
+│ │                                                                              │ │
+│ │ Track Routers:                                                              │ │
+│ │ ├─ render_highway_track()   [Lane width: 1/3, Curve: 3.0x]               │ │
+│ │ ├─ render_city_track()      [Lane width: 1/3, Curve: 2.0x]               │ │
+│ │ ├─ render_mountain_track()  [Lane width: 1/3, Curve: 4.0x]               │ │
+│ │ ├─ render_desert_track()    [Lane width: 1/3, Curve: 2.5x]               │ │
+│ │ └─ render_tunnel_track()    [Lane width: 1/3, Curve: 1.5x]               │ │
+│ │                                                                              │ │
+│ │ Shared Rendering:                                                           │ │
+│ │ ├─ render_road_base()       [Animated road texture]                       │ │
+│ │ ├─ render_lane_markers()    [Curved lane dividers]                        │ │
+│ │ ├─ render_objects()         [AI cars + obstacles]                         │ │
+│ │ ├─ render_player()          [Player car + effects]                        │ │
+│ │ ├─ render_ghost()           [Replay ghost car]                            │ │
+│ │ └─ render_weather_overlay() [Weather effects]                             │ │
+│ │                                                                              │ │
+│ │ Environment Renderers:                                                      │ │
+│ │ ├─ render_buildings()       [City buildings]                              │ │
+│ │ ├─ render_building()        [Single building with windows]                │ │
+│ │ ├─ render_mountain_bg()     [Mountain peaks]                              │ │
+│ │ ├─ render_desert_bg()       [Desert cacti]                                │ │
+│ │ └─ render_tunnel_walls()    [Tunnel walls + lights]                       │ │
+│ │                                                                              │ │
+│ └──────────────────────────────────────────────────────────────────────────────┘ │
+│                                                                                 │
+│ ├─ objects.rs ────────────────────────────────────────────────────────────────┐ │
+│ │ Main: render_objects(f, area, state, lane_width, height, curve, dist)     │ │
+│ │                                                                              │ │
+│ │ ├─ render_ai_cars()         [Enemy vehicles]                              │ │
+│ │ ├─ render_obstacles()       [Powerups & hazards]                          │ │
+│ │ ├─ render_car()             [Individual car rendering]                    │ │
+│ │ ├─ render_player()          [Player car + powerup effects]                │ │
+│ │ │  ├─ Boost Effect: 🔥🔥 (red, blinking)                                  │ │
+│ │ │  ├─ Shield Effect: ◯◯◯ (cyan)                                           │ │
+│ │ │  ├─ Invincibility: ✨⭐✨ (yellow, blinking)                             │ │
+│ │ │  └─ Magnet Effect: 🧲 (red)                                             │ │
+│ │ ├─ render_ghost()           [Replay ghost car (semi-transparent)]         │ │
+│ │ └─ render_powerup()         [Obstacle/powerup icons]                      │ │
+│ │                                                                              │ │
+│ └──────────────────────────────────────────────────────────────────────────────┘ │
+│                                                                                 │
+│ ├─ effects.rs ────────────────────────────────────────────────────────────────┐ │
+│ │ Main: render_weather_overlay(f, area, state)                              │ │
+│ │                                                                              │ │
+│ │ ├─ render_lane_markers()    [Animated lane dividers]                      │ │
+│ │ │  └─ Offset: (distance * 2) % 6                                          │ │
+│ │ │                                                                           │ │
+│ │ ├─ render_rain()            [Animated rain drops]                         │ │
+│ │ │  └─ Spacing: 7, Step: 3                                                 │ │
+│ │ │                                                                           │ │
+│ │ └─ render_slowmo_effect()   [Motion blur lines]                           │ │
+│ │    └─ Step: 4                                                              │ │
+│ │                                                                              │ │
+│ └──────────────────────────────────────────────────────────────────────────────┘ │
+│                                                                                 │
+│ └─ hud.rs ────────────────────────────────────────────────────────────────────┐ │
+│   Layout Functions:                                                            │ │
+│   ├─ render_singleplayer_hud()  [Single-player layout]                      │ │
+│   ├─ render_splitscreen_hud()   [Split-screen multiplayer]                  │ │
+│   ├─ render_career_hud()        [Career mode with progression]              │ │
+│   └─ render_replay_hud()        [Replay mode with playback]                 │ │
+│                                                                               │ │
+│   Gauge Functions:                                                             │ │
+│   ├─ render_enhanced_hud()      [Main stats: Score, Combo, Health, Level]   │ │
+│   ├─ render_player_hud()        [Per-player: Score, Health, Speed]          │ │
+│   ├─ render_speed_gauge()       [Dynamic speed indicator]                   │ │
+│   └─ render_powerup_gauge()     [Powerup duration bars]                     │ │
+│                                                                               │ │
+│   Info Functions:                                                              │ │
+│   ├─ render_career_info()       [Progress & objectives]                     │ │
+│   ├─ render_replay_info()       [Time & ghost info]                         │ │
+│   ├─ render_replay_controls()   [Playback instructions]                     │ │
+│   ├─ render_controls()          [Game control instructions]                 │ │
+│   └─ render_menu()              [Menu with selection]                       │ │
+│                                                                               │ │
+│   Powerup Gauges:                                                              │ │
+│   ├─ ⚡BOOST    (Magenta)                                                     │ │
+│   ├─ 🛡SHIELD   (Cyan)                                                        │ │
+│   ├─ ⭐STAR     (Yellow)                                                      │ │
+│   └─ 🧲MAG      (Green)                                                       │ │
+│                                                                               │ │
+│   Layout Constraints:                                                          │ │
+│   ├─ Single-player: [6 lines HUD, ∞ game, 2 lines controls]                │ │
+│   ├─ Split-screen: [4 lines HUD, ∞ game] × 2                               │ │
+│   ├─ Career: [7 lines HUD, ∞ game, 3 lines info]                           │ │
+│   └─ Replay: [3 lines controls, ∞ game, 2 lines info]                      │ │
+│                                                                               │ │
+│ └──────────────────────────────────────────────────────────────────────────────┘ │
+│                                                                                 │
+└─────────────────────────────────────────────────────────────────────────────────┘
+
+═══════════════════════════════════════════════════════════════════════════════════
+
+DEPENDENCY GRAPH:
+
+lib.rs
+  ├─ core::types
+  ├─ core::utils
+  ├─ io::terminal
+  ├─ io::input
+  └─ rendering::*
+
+rendering::track
+  ├─ core::types
+  ├─ core::utils
+  ├─ rendering::objects
+  └─ rendering::effects
+
+rendering::objects
+  ├─ core::types
+  └─ core::utils
+
+rendering::effects
+  └─ core::types
+
+rendering::hud
+  ├─ core::types
+  └─ core::utils
+
+io::input
+  └─ core::types
+
+io::terminal
+  (No internal dependencies)
+
+core::utils
+  └─ core::types
+
+═══════════════════════════════════════════════════════════════════════════════════
+
+STATISTICS:
+
+Lines of Code:
+  ├─ core/types.rs:      ~120 lines
+  ├─ core/utils.rs:      ~180 lines
+  ├─ io/input.rs:        ~70 lines
+  ├─ io/terminal.rs:     ~40 lines
+  ├─ rendering/track.rs: ~280 lines
+  ├─ rendering/objects.rs: ~200 lines
+  ├─ rendering/effects.rs: ~80 lines
+  ├─ rendering/hud.rs:   ~350 lines
+  └─ lib.rs:             ~195 lines
+  
+  Total: ~1,515 lines (organized, modular, well-documented)
+
+Functions: ~80+
+Structures: 3 (GameState, InputState, AudioCommand)
+Constants: 30+
+Car Types: 10
+Track Types: 5
+Powerup Types: 6
+Building Types: 3
+Weather Types: 4
+
+═══════════════════════════════════════════════════════════════════════════════════

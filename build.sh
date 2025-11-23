@@ -149,9 +149,8 @@ build_dotnet() {
     # Detect correct directory structure
     if [ -d "game-engine" ]; then
         DOTNET_DIR="game-engine"
-        cd "$DOTNET_DIR"
         
-        if [ ! -f "Program.cs" ] && [ ! -f "*.csproj" ]; then
+        if [ ! -f "game-engine/Program.cs" ] && [ ! -f "game-engine"/*.csproj ]; then
             echo -e "${RED}❌ No C# project files found in game-engine/${NC}"
             exit 1
         fi
@@ -165,7 +164,12 @@ build_dotnet() {
     fi
     
     echo -e "${YELLOW}Compiling C# project in Release mode...${NC}"
-    dotnet build -c Release --no-restore
+    # Build only the App project (excludes tests automatically)
+    if [ -n "$DOTNET_DIR" ]; then
+        dotnet build "$DOTNET_DIR/TerminalRacer/src/App/TerminalRacer.App.csproj" -c Release --no-restore
+    else
+        dotnet build "TerminalRacer/src/App/TerminalRacer.App.csproj" -c Release --no-restore
+    fi
     
     if [ $? -eq 0 ]; then
         echo -e "${GREEN}✓ C# project compiled successfully${NC}"
@@ -174,9 +178,6 @@ build_dotnet() {
         exit 1
     fi
     
-    if [ -n "$DOTNET_DIR" ]; then
-        cd ..
-    fi
     echo ""
 }
 
@@ -186,11 +187,14 @@ build_dotnet() {
 copy_library() {
     echo -e "${BLUE}[4/7]${NC} Copying Rust library to .NET output..."
     
-    # Detect Rust directory
+    # Detect Rust directory (check rust-renderer first)
     if [ -d "rust-renderer" ]; then
         RUST_DIR="rust-renderer"
-    else
+    elif [ -d "rust_renderer" ]; then
         RUST_DIR="rust_renderer"
+    else
+        echo -e "${RED}❌ Rust renderer directory not found!${NC}"
+        exit 1
     fi
     
     RUST_LIB="${RUST_DIR}/target/release/librust_renderer.so"
